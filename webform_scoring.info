@@ -1,1 +1,7 @@
 name = Webform Scoring
+core=7.x
+package=Webform
+description = Provides scoring feature to each submission based on their choices. 
+version = 1.0-dev
+
+dependencies[] = webform
