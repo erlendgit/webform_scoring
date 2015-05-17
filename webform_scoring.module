@@ -108,11 +108,11 @@ function webform_scoring_scoring_rules($node){
 		drupal_goto($redirect_to);
 	}
 
-
+#error_reporting(E_ALL);
+#ini_set("display_errors", 1);
 
 	// ---------------------------------------------------------------------------------------------------------------
 	if(count($result) > 0 && $result[0]->enabled == 1){
-		
 		$result = db_select('webform_scoring_values_scores_pair', 'a')->fields('a')->condition('a.nid',$node->webform['nid'],'=')->execute()->fetchAll(PDO::FETCH_ASSOC);
 		#dsm($result);
 
@@ -127,10 +127,14 @@ function webform_scoring_scoring_rules($node){
 				$p_item['actions'] = "edit | delete";
 				array_push($component_table_body, $p_item);
 		}
+		/**
+		 * @note : array_column() works with php >= 5.5 
+		 */
 		$used_components = array_column($result, 'cid');
 		$used_vs_pairs = array_column($result, 'value_score_pair');
 		#dsm($used_components);
 		$all_components = $node->webform['components'];
+		#echo 'TESTING';
 
 		$available_components = array();
 		foreach ($all_components as $com) {
@@ -149,6 +153,7 @@ function webform_scoring_scoring_rules($node){
 		drupal_set_message("Scoring is not enabled for this webform. Click the checkbox to enable Scoring in this webform. ");
 		$output = theme('webform_scoring_enable', array('node'=>$node, ));
 	}
+
 	return $output;
 }	
 
