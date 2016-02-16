@@ -1,0 +1,956 @@
+diff --git a/includes/forms/rule.delete.inc b/includes/forms/rule.delete.inc
+new file mode 100644
+index 0000000..e882cbc
+--- /dev/null
++++ b/includes/forms/rule.delete.inc
+@@ -0,0 +1,59 @@
++<?php
++
++/**
++ * Form to delete a rule
++ * 
++ * @param type $form
++ * @param type $form_state
++ * @param type $node
++ * @param type $rid
++ * @return boolean
++ */
++function webform_scoring_delete_rule($form, &$form_state, $node, $rid) {
++  $form_state['rid'] = $rid;
++  $form_state['node'] = $node;
++
++  $form['actions'] = array(
++    '#type' => 'actions',
++    'submit' => array(
++      '#type' => 'submit',
++      '#value' => t('Yes'),
++      '#submit' => array('webform_scoring_delete_rule_yes'),
++    ),
++    'cancel' => array(
++      '#type' => 'submit',
++      '#value' => t('Cancel'),
++    ),
++  );
++  
++  $rule = _webform_score_get_rule($node, $rid);
++  $component = NULL;
++  if ($rule && !empty($node->webform['components'][$rule->cid])) {
++    $component = $node->webform['components'][$rule->cid];
++  }
++  
++  if ($rule && $component) {
++    $form['info'] = array(
++      '#markup' => t('Remove the rule at component %component?', array('%component' => $component['name'])),
++      '#weight' => -100,
++    );
++  } else {
++    drupal_set_message(t("Component not found"), 'error', FALSE);
++    $form['actions']['submit']['#access'] = FALSE;
++  }
++  
++  
++  return $form;
++}
++
++/**
++ * Remove rule at confirmation
++ * @param type $form
++ * @param type $form_state
++ */
++function webform_scoring_delete_rule_yes($form, &$form_state) {
++  db_delete('webform_scoring_values_scores_pair')
++    ->condition('id', $form_state['rid'])
++    ->condition('nid', $form_state['node']->nid)
++    ->execute();
++}
+diff --git a/includes/forms/rule.edit.inc b/includes/forms/rule.edit.inc
+new file mode 100644
+index 0000000..b40dd3e
+--- /dev/null
++++ b/includes/forms/rule.edit.inc
+@@ -0,0 +1,64 @@
++<?php
++
++/**
++ * Form callback to edit a rule
++ * 
++ * @param type $form
++ * @param array $form_state
++ * @param type $node
++ * @param type $rid
++ * @return boolean
++ */
++function webform_scoring_edit_rule($form, &$form_state, $node, $rid) {
++
++  $form['actions'] = array(
++    '#type' => 'actions',
++    'submit' => array(
++      '#type' => 'submit',
++      '#value' => t('Save'),
++      '#submit' => array('webform_scoring_edit_rule_save'),
++    ),
++    'cancel' => array(
++      '#type' => 'submit',
++      '#value' => t('Cancel'),
++    ),
++  );
++
++  $rule = _webform_score_get_rule($node, $rid);
++  $component = NULL;
++
++  if ($rule && $node->webform['components'][$rule->cid]) {
++    $component = $node->webform['components'][$rule->cid];
++  }
++
++  $form_state['rid'] = $rule->id;
++
++  if (!$rule || !$component) {
++    drupal_set_message(t('Component not found'), 'error', FALSE);
++    $form['actions']['submit']['#access'] = FALSE;
++  } else {
++    $form['info'] = array(
++      '#markup' => t('Score map for %component', array('%component' => $component['name'])),
++    );
++    if ($component['type'] == 'select') {
++      $form['info']['#suffix'] = '<pre>' . $component['extra']['items'] . '</pre>';
++    }
++    $form['value_score_pair'] = array(
++      '#type' => 'textarea',
++      '#default_value' => $rule->value_score_pair,
++      '#required' => TRUE,
++      '#title' => t('Data'),
++    );
++  }
++
++  return $form;
++}
++
++function webform_scoring_edit_rule_save($form, &$form_state) {
++  db_update('webform_scoring_values_scores_pair')
++    ->fields(array(
++      'value_score_pair' => $form_state['values']['value_score_pair'],
++    ))
++    ->condition('id', $form_state['rid'])
++    ->execute();
++}
+diff --git a/includes/forms/rule.view.inc b/includes/forms/rule.view.inc
+new file mode 100644
+index 0000000..096ef96
+--- /dev/null
++++ b/includes/forms/rule.view.inc
+@@ -0,0 +1,240 @@
++<?php
++
++/**
++ * form callback for the main form
++ * @param type $form
++ * @param type $form_state
++ * @param type $node
++ * @return string
++ */
++function webform_scoring_manage_rules($form, &$form_state, $node) {
++
++  $score_record = _webform_score_enabled($node->nid);
++  $form_state['score_record'] = $score_record;
++  $form_state['node'] = $node;
++
++  $label_value = "Webform Quiz - Score";
++
++  if ($score_record) {
++    $has_score = _webform_score_has_cid($node, $score_record->cid);
++    if (!$has_score) {
++      $score_enabled = FALSE;
++    } else {
++      $score_enabled = $score_record->enabled;
++      $label_value = $has_score;
++    }
++  } else {
++    $score_enabled = FALSE;
++  }
++
++  $components = _webform_score_allowed_components($node);
++
++  if ($components) {
++    $form['new'] = array(
++      '#type' => 'fieldset',
++      '#title' => t("New rule"),
++      '#collapsible' => TRUE,
++      '#collapsed' => TRUE,
++      'cid' => array(
++        '#type' => 'select',
++        '#title' => 'Component',
++        '#options' => _webform_score_allowed_components($node),
++      ),
++      'value_score_pair' => array(
++        '#type' => 'textarea',
++        '#title' => t('Data'),
++        '#default_value' => 'answer_a|10',
++      ),
++      'submit' => array(
++        '#type' => 'submit',
++        '#value' => t('Add'),
++        '#submit' => array('webform_scoring_manage_rules_submit_add'),
++      )
++    );
++  }
++
++  $form['label'] = array(
++    '#title' => t('Label'),
++    '#type' => 'textfield',
++    '#default_value' => $label_value,
++  );
++
++  $form['actions'] = array(
++    '#weight' => 10,
++    '#type' => 'actions',
++  );
++
++  if ($score_enabled) {
++    $form['actions']['submit'] = array(
++      '#type' => 'submit',
++      '#value' => t('Update'),
++    );
++    $form['actions']['disable'] = array(
++      '#type' => 'submit',
++      '#value' => t('Disable'),
++      '#submit' => array('webform_scoring_manage_rules_submit_disable'),
++    );
++  } else {
++    $form['actions']['submit'] = array(
++      '#type' => 'submit',
++      '#value' => t('Enable'),
++    );
++  }
++
++
++  $components = _webform_score_used_components($node);
++  $component_table_body = array();
++  $count = 0;
++  $options = array('query' => drupal_get_destination());
++  foreach ($components as $item) {
++
++    $p_item['name'] = $node->webform['components'][$item->cid]['name'];
++    $p_item['type'] = $node->webform['components'][$item->cid]['type'];
++    $p_item['value_score_pair'] = check_plain($item->value_score_pair);
++    $p_item['actions'] = implode('<br>', array(
++      l(t('edit'), "node/{$node->nid}/webform/scoring-rules/edit/{$item->id}", $options),
++      l(t('delete'), "node/{$node->nid}/webform/scoring-rules/delete/{$item->id}", $options),
++    ));
++
++    $component_table_body[] = $p_item;
++  }
++
++  $headers = array("Component", "Type", "Value|Score", "Actions");
++  $form['items'] = array(
++    '#weight' => 100,
++    '#theme' => 'table',
++    '#header' => $headers,
++    '#rows' => $component_table_body,
++    '#attributes' => array('class' => array('mytable'))
++  );
++
++
++  return $form;
++}
++
++/**
++ * On enable/disable
++ * @param type $form
++ * @param array $form_state
++ */
++function webform_scoring_manage_rules_submit($form, &$form_state) {
++  $score_record = $form_state['score_record'];
++  $node = $form_state['node'];
++
++  if (!$score_record) {
++    // create if needed
++    $cid = create_a_new_hidden_component($node, $form_state['values']['label']);
++    $result = db_insert('webform_scoring_enabled_webforms')
++      ->fields(array('enabled' => 1, 'cid' => $cid, 'nid' => $node->nid))
++      ->execute();
++  } else {
++    // check if the cid is still in place
++    $score_record->cid = create_a_new_hidden_component($node, $form_state['values']['label'], $score_record->cid);
++
++    // update record
++    $result = db_update('webform_scoring_enabled_webforms')
++      ->fields(array(
++        'enabled' => 1,
++        'cid' => $score_record->cid,
++      ))
++      ->condition('id', $score_record->id)
++      ->execute();
++  }
++}
++
++/**
++ * On disable scoring for the selected node
++ * @param type $form
++ * @param type $form_state
++ */
++function webform_scoring_manage_rules_submit_disable($form, &$form_state) {
++  $score_record = $form_state['score_record'];
++  $node = $form_state['node'];
++
++  // update record
++  $result = db_update('webform_scoring_enabled_webforms')
++    ->fields(array(
++      'enabled' => 0,
++      'cid' => 0,
++    ))
++    ->condition('id', $score_record->id)
++    ->execute();
++  
++  // delete the component
++  delete_custom_hidden_component($node->nid, $score_record->cid);
++}
++
++/**
++ * On submit a new rule
++ * @param type $form
++ * @param type $form_state
++ */
++function webform_scoring_manage_rules_submit_add($form, &$form_state) {
++  // attache to this one:
++  $node = $form_state['node'];
++
++  $result = db_insert('webform_scoring_values_scores_pair')
++    ->fields(array(
++      'nid' => $node->nid,
++      'cid' => $form_state['values']['cid'],
++      'value_score_pair' => $form_state['values']['value_score_pair'],
++    ))
++    ->execute();
++}
++
++/**
++ * Delete a specific component at the node
++ * 
++ * @param type $nid
++ * @param type $cid
++ */
++function delete_custom_hidden_component($nid, $cid = 9999) {
++  $node = node_load($nid);
++  #dsm($node);
++
++  unset($node->webform['components'][$cid]);
++  node_save($node);
++}
++
++/**
++ * Create a hidden custom component to store the result
++ * @param type $nid
++ * @param type $new_component
++ * @param type $cid
++ * @param type $pid
++ * @return type
++ */
++function create_a_new_hidden_component($node, $label, $cid = NULL) {
++
++  $old_label = _webform_score_has_cid($node, $cid);
++  if ($old_label) {
++    // update
++    $node->webform['components'][$cid]['name'] = $label;
++  } else {
++    // insert
++    $cid = max(array_keys($node->webform['components'])) + 1;
++    $safe_label = drupal_html_class($label);
++    $processed_name = str_replace('-', '_', strtolower($safe_label));
++    // Create the webform components array. Not sure if we need all these
++    // values, but let's be sure.
++    $component = array(
++      'cid' => $cid,
++      'pid' => 0, #(int)$pid,
++      'nid' => (int) $node->nid,
++      // I don't trust the admin to make a key based on input :)
++      'form_key' => $processed_name,
++      'name' => $label,
++      // I want all lines to be numeric type component.
++      'type' => 'hidden',
++      'value' => '0',
++      'extra' => array(),
++      'mandatory' => '0',
++      'weight' => -1,
++      'page_num' => 1,
++    );
++    $node->webform['components'][$cid] = $component;
++  }
++
++  node_save($node);
++  return $cid;
++}
+diff --git a/includes/pages/rule.manage.inc b/includes/pages/rule.manage.inc
+new file mode 100644
+index 0000000..5500b15
+--- /dev/null
++++ b/includes/pages/rule.manage.inc
+@@ -0,0 +1,112 @@
++<?php
++/**
++ * Page callback - choose which form to render
++ * @todo create the delete rule callback
++ * @todo create the edit rule callback
++ * 
++ * @param type $node
++ * @param type $action
++ * @param type $sid
++ * @return type
++ */
++function webform_scoring_scoring_rules($node, $action = NULL, $rid = NULL) {
++  switch ($action) {
++    case 'delete':
++      module_load_include('inc', 'webform_scoring', 'includes/forms/rule.delete');
++      return drupal_get_form('webform_scoring_delete_rule', $node, $rid);
++    case 'edit':
++      module_load_include('inc', 'webform_scoring', 'includes/forms/rule.edit');
++      return drupal_get_form('webform_scoring_edit_rule', $node, $rid);
++    default:
++      module_load_include('inc', 'webform_scoring', 'includes/forms/rule.view');
++      return drupal_get_form('webform_scoring_manage_rules', $node);
++  }
++}
++
++/**
++ * Get a list of all used components
++ * @param type $node
++ * @return type
++ */
++function _webform_score_used_components($node) {
++  $components = &drupal_static(__FUNCTION__ . '_' . $node->nid);
++
++  if (!$components) {
++    $components = array();
++    $result = db_select('webform_scoring_values_scores_pair', 'a')
++      ->fields('a')
++      ->condition('a.nid', $node->nid)
++      ->execute();
++    foreach ($result as $component) {
++      $components[$component->cid] = $component;
++    }
++  }
++  return $components;
++}
++
++/**
++ * Load a single rule
++ * @param type $rid
++ * @return type
++ */
++function _webform_score_get_rule($node, $rid) {
++  $rule = &drupal_static(__FUNCTION__ . '_' . $rid);
++  if (!$rule) {
++    $query = db_select('webform_scoring_values_scores_pair', 'p');
++    $query->fields('p');
++    $query->condition('id', $rid);
++    $query->condition('nid', $node->nid);
++    $rule = $query->execute()->fetch();
++  }
++  
++  return $rule;
++}
++
++/**
++ * Get a list of all possible components to create a rule for
++ * 
++ * @param type $node
++ * @return type
++ */
++function _webform_score_allowed_components($node) {
++  $components = &drupal_static(__FUNCTION__ . '_' . $node->nid);
++
++  if (!$components) {
++    $used = _webform_score_used_components($node);
++    foreach ($node->webform['components'] as $cid => $component) {
++      if (!empty($used[$cid])) {
++        continue;
++      }
++
++      switch ($component['type']) {
++        case 'markup':
++        case 'hidden':
++        case 'pagebreak':
++          continue 2;
++        default:
++          break;
++      }
++      $components[$cid] = $component['name'];
++    }
++  }
++
++  return $components;
++}
++
++/**
++ * Check if the webform contains a certain component
++ * @param type $node
++ * @param type $cid
++ * @return type
++ */
++function _webform_score_has_cid($node, $cid) {
++  if (empty($node->webform)) {
++    return FALSE;
++  }
++
++  if (empty($node->webform['components'][$cid]['name'])) {
++    return FALSE;
++  }
++
++  return $node->webform['components'][$cid]['name'];
++}
+diff --git a/includes/pages/score.view.inc b/includes/pages/score.view.inc
+new file mode 100644
+index 0000000..45a619e
+--- /dev/null
++++ b/includes/pages/score.view.inc
+@@ -0,0 +1,14 @@
++<?php
++
++/**
++ * Page callback for the scores of this form
++ * @todo finish this page callback
++ * 
++ * @param type $node
++ * @return string
++ */
++function webform_scoring_scores($node) {
++  $output = "Hi, This is a Score page. ";
++
++  return $output;
++}
+diff --git a/webform_scoring.module b/webform_scoring.module
+index cd6a6b6..a32cf41 100644
+--- a/webform_scoring.module
++++ b/webform_scoring.module
+@@ -1,267 +1,116 @@
+ <?php
+ 
+-
+-function webform_scoring_menu(){
+-	$items = array();
+-
+-	$items['node/%webform_menu/webform/scoring-rules'] = array(
+-		'title' => 'Scoring Rules',
+-		'page callback' => 'webform_scoring_scoring_rules',
+-		'page arguments' => array(1),
+-		'access callback' => 'webform_results_access',
+-		'access arguments' => array(1),
+-		'weight' => 6,
+-		'type' => MENU_LOCAL_TASK,
+-	);
+-
+-	$items['node/%webform_menu/webform-results/scores'] = array(
+-		'title' => 'Scores',
+-		'page callback' => 'webform_scoring_scores',
+-		'page arguments' => array(1),
+-		'access callback' => 'webform_results_access',
+-		'access arguments' => array(1),
+-		'weight' => 6,
+-		'type' => MENU_LOCAL_TASK,
+-	);
+-
+-	return $items;
++/**
++ * Implement hook_menu
++ * @return array
++ */
++function webform_scoring_menu() {
++  $items = array();
++
++  $items['node/%webform_menu/webform/scoring-rules'] = array(
++    'title' => 'Scoring Rules',
++    'page callback' => 'webform_scoring_scoring_rules',
++    'page arguments' => array(1, 4, 5),
++    'access callback' => 'webform_results_access',
++    'access arguments' => array(1),
++    'weight' => 6,
++    'file' => 'includes/pages/rule.manage.inc',
++    'type' => MENU_LOCAL_TASK,
++  );
++
++  $items['node/%webform_menu/webform-results/scores'] = array(
++    'title' => 'Scores',
++    'page callback' => 'webform_scoring_scores',
++    'page arguments' => array(1),
++    'access callback' => 'webform_results_access',
++    'access arguments' => array(1),
++    'weight' => 6,
++    'file' => 'includes/pages/score.view.inc',
++    'type' => MENU_LOCAL_TASK,
++  );
++
++  return $items;
+ }
+ 
+-function webform_scoring_theme($existing, $type, $theme, $path){
+-	$themes = array();
+-
+-	$themes['webform_scoring_scoring_rules'] = array(
+-		'template' => 'webform_scoring_scoring_rules',
+-		'variables' => array(),
+-	);
+-	$themes['webform_scoring_enable'] = array(
+-		'template' => 'webform_scoring_enable',
+-		'variables' => array(),
+-	);
+-
+-	return $themes;
++/**
++ * Get the settings for the current webform
++ * @param type $nid
++ * @return type
++ */
++function _webform_score_enabled($nid) {
++  $enabled = &drupal_static(__FUNCTION__ . '_' . $nid);
++
++  if (empty($enabled['loaded'])) {
++    $enabled['loaded'] = TRUE;
++    $query = db_select('webform_scoring_enabled_webforms', 'a');
++    $query->fields('a');
++    $query->condition('a.nid', $nid);
++    $enabled['result'] = $query->execute()->fetch();
++  }
++
++  return $enabled['result'];
+ }
+ 
+-function webform_scoring_scoring_rules($node){
+-	/**
+-	 *
+-	 */
+-
+-	#dsm($node);
+-	//  Check whether this webform is enabled or not?
+-	$result = db_select('webform_scoring_enabled_webforms', 'a')->fields('a')->condition('a.nid',$node->webform['nid'],'=')->execute()->fetchAll();
+-	#dsm($result);
+-
+-	if($_SERVER['REQUEST_METHOD'] == "POST") {
+-		$redirect_to = current_path();
+-		switch ($_POST['form_token']) {
+-			case md5('insert_new_rule'):
+-				if(count($result) > 0 && $result[0]->enabled == 1){
+-					$result = db_insert('webform_scoring_values_scores_pair')
+-	                    ->fields(array(
+-	                      'nid' => $node->webform['nid'],
+-	                      'cid' => $_POST['cid'],
+-	                      'value_score_pair' => $_POST['vs_pair'],
+-	                    ))
+-	                    ->execute();
+-					drupal_set_message( ($result)? "Scoring Rule Added" : "Error occured while adding Scoring Rules.");
+-				}
+-				break;
+-			case md5('enable_scoring'):
+-				if(count($result) == 0){
+-					$cid = create_a_new_hidden_component($node->nid);
+-					$result = db_insert('webform_scoring_enabled_webforms')
+-	                    ->fields(array(
+-	                      'nid' => $node->webform['nid'],
+-	                      'enabled' => 1,
+-	                      'cid' => $cid,
+-	                    ))
+-	                    ->execute();
+-					drupal_set_message( ($result)? "Scoring Enabled" : "Error occured while enabling Scoring.");
+-				}else if( count($result) == 1 && $result[0]->enabled == 0){
+-					$cid = create_a_new_hidden_component($node->nid);
+-					$result = db_update('webform_scoring_enabled_webforms')
+-						->expression("enabled", 1)
+-						->expression("cid", $cid)
+-	                    ->condition('nid', $node->webform['nid'])
+-	                    ->execute();
+-					drupal_set_message( ($result)? "Scoring Enabled" : "Error occured while enabling Scoring.");
+-				}
+-
+-				break;
+-			case md5('disable_scoring'):
+-				delete_custom_hidden_component($node->nid, $result[0]->cid);
+-				if( count($result) == 1 && $result[0]->enabled == 1){
+-					$result = db_update('webform_scoring_enabled_webforms')
+-						->expression("enabled", 0)
+-						->expression("cid", 0)
+-	                    ->condition('nid', $node->webform['nid'])
+-	                    ->execute();
+-					drupal_set_message( ($result)? "Scoring Disabled" : "Error occured while enabling Scoring.");
+-				}
+-				break;
+-			
+-			default:
+-				# code...
+-				break;
+-		}
+-		drupal_goto($redirect_to);
+-	}
+-
+-#error_reporting(E_ALL);
+-#ini_set("display_errors", 1);
+-
+-	// ---------------------------------------------------------------------------------------------------------------
+-	if(count($result) > 0 && $result[0]->enabled == 1){
+-		$result = db_select('webform_scoring_values_scores_pair', 'a')->fields('a')->condition('a.nid',$node->webform['nid'],'=')->execute()->fetchAll(PDO::FETCH_ASSOC);
+-		#dsm($result);
+-
+-		$component_table_body = array();
+-		$count = 0;
+-		foreach ($result as $item) {	
+-				
+-				$p_item['sl'] = ++$count;
+-				$p_item['cid'] = $node->webform['components'][$item['cid']]['name'];
+-				$p_item['type'] = $node->webform['components'][$item['cid']]['type'];
+-				$p_item['value_score_pair'] = $item['value_score_pair'];
+-				$p_item['actions'] = "edit | delete";
+-				array_push($component_table_body, $p_item);
+-		}
+-		/**
+-		 * @note : array_column() works with php >= 5.5 
+-		 */
+-		$used_components = array_column($result, 'cid');
+-		$used_vs_pairs = array_column($result, 'value_score_pair');
+-		#dsm($used_components);
+-		$all_components = $node->webform['components'];
+-		#echo 'TESTING';
+-
+-		$available_components = array();
+-		foreach ($all_components as $com) {
+-			if(!in_array( $com['cid'], $used_components) ){
+-				array_push($available_components, $com);
+-			}
+-		}
+-
+-		#dsm($available_components);
+-
+-		$headers = array("Sl", "Component", "Type", "Value|Score", "Actions");
+-
+-		$output = theme('webform_scoring_scoring_rules', array('node'=>$node, 'components'=>$available_components, 'scoring_count'=> count($component_table_body)));
+-		$output .= theme('table', array( 'header' => $headers, 'rows' => $component_table_body, 'attributes' => array('class' => array('mytable')) ));
+-	}else{
+-		drupal_set_message("Scoring is not enabled for this webform. Click the checkbox to enable Scoring in this webform. ");
+-		$output = theme('webform_scoring_enable', array('node'=>$node, ));
+-	}
+-
+-	return $output;
+-}	
+-
+-function delete_custom_hidden_component($nid, $cid=9999){
+-	$node = node_load($nid);
+-	#dsm($node);
+-
+-	unset($node->webform['components'][$cid]);
+-	node_save($node);
+-}
+-
+-
+-
+-function create_a_new_hidden_component($nid, $new_component="Webform Quiz - Score", $cid=9999, $pid=0){
+-    $node = node_load($nid);
+-    $cid = max(array_keys($node->webform['components']))+1;
+-    $processed_name  = str_replace(' ', '_', strtolower($new_component));
+-    // Create the webform components array. Not sure if we need all these
+-    // values, but let's be sure.
+-    $component = array(
+-      'cid' => $cid,
+-      'pid' => 0,#(int)$pid,
+-      'nid' =>  (int)$node->nid,
+-      // I don't trust the admin to make a key based on input :)
+-      'form_key' => "webform_scoring_hidden_answer",
+-      'name' => $new_component,
+-      // I want all lines to be numeric type component.
+-      'type' => 'hidden',
+-      'value' => '0',
+-      'extra' => array(),
+-      'mandatory' => '0',
+-      'weight' => -1,
+-      'page_num' => 1,
+-    );
+-
+-    array_push($node->webform['components'], $component);
+-    node_save($node);
++/**
++ * Calculate the score for the result of a submission
++ * @param type $node
++ * @param type $data
++ * @return boolean|array
++ */
++function webform_scoring_calculate_score($node, $data) {
++  $score_enabled = _webform_score_enabled($node->nid);
++  if ($score_enabled->enabled && _webform_score_has_cid($node, $score_enabled->cid)) {
++    $query = db_select('webform_scoring_values_scores_pair', 'a');
++    $query->fields('a');
++    $query->condition('a.nid', $node->webform['nid'], '=');
++    $result = $query->execute()->fetchAll(PDO::FETCH_ASSOC);
++
++    $score_key = array();
++    $cid_list = array();
++    //$component = array();
++    foreach ($result as $item) {
++      $pairs = array();
++      $score_key[$item['cid']]['cid'] = $item['cid'];
++      array_push($cid_list, $item['cid']);
++      $lines = explode("\n", trim($item['value_score_pair']));
++      foreach ($lines as $com_val) {
++        $pair = array();
++        $com_val = explode("|", $com_val);
++        $pair['value'] = $com_val[0];
++        $pair['score'] = $com_val[1];
++        array_push($pairs, $pair);
++      }
++      $score_key[$item['cid']]['pairs'] = $pairs;
++    }
++    $total_score = 0;
++    foreach ($data as $key => $value) {
++      if (!is_array($value)) {
++        $value = array($value);
++      }
++      if (in_array($key, $cid_list)) {
++        foreach ($score_key[$key]['pairs'] as $vs_pair) {
++          if ($value[0] == $vs_pair['value']) {
++            $total_score += $vs_pair['score'];
++          }
++        }
++      }
++    }
++    return $total_score;
++  }
+ 
+-    drupal_set_message("{$new_component} component successfully created in {$node->title}");
+-    return $cid;
++  return FALSE;
+ }
+ 
++/**
++ * Store a quiz result upon submission presave
++ * @param type $node
++ * @param type $submission
++ */
+ function webform_scoring_webform_submission_presave($node, &$submission) {
+-	#dsm($node);
+-	#dsm($submission);
+-	#drupal_set_message(t('before submission presave. :) :)'));
+-
+-	$result = db_select('webform_scoring_enabled_webforms', 'a')->fields('a')->condition('a.nid',$node->webform['nid'],'=')->execute()->fetchAll();
+-	#dsm($result);
+-	if($result[0]->enabled == 1){ // this webform is enabled.
+-		$result_cid = $result[0]->cid;	
+-		$total_score = 0;
+-		// Now get all Values-Score pairs
+-		$result = db_select('webform_scoring_values_scores_pair', 'a')->fields('a')->condition('a.nid',$node->webform['nid'],'=')->execute()->fetchAll(PDO::FETCH_ASSOC);
++  $total_score = webform_scoring_calculate_score($node, $submission->data);
+ 
+-		$score_key = array();
+-		$cid_list = array();
+-		//$component = array();
+-		foreach ($result as $item) {	
+-			$pairs = array();
+-			$score_key[$item['cid']]['cid'] = $item['cid'];
+-			array_push($cid_list, $item['cid']);
+-			$lines = explode("\n", trim($item['value_score_pair']));
+-			foreach ($lines as $com_val) {
+-				$pair = array();
+-				$com_val = explode("|", $com_val);
+-				$pair['value'] = $com_val[0]; 
+-				$pair['score'] = $com_val[1];
+-				array_push($pairs, $pair);
+-			}
+-			$score_key[$item['cid']]['pairs'] = $pairs;
+-			//array_push($score_key, $component);
+-		}
+-		foreach ($submission->data as $key => $value) {
+-			if(in_array($key, $cid_list)){
+-				foreach ($score_key[$key]['pairs'] as $vs_pair) {
+-					if($value[0] == $vs_pair['value']){
+-						$total_score += $vs_pair['score'];
+-					}
+-				}
+-			}
+-		}
+-		#dsm($score_key);
+-		drupal_set_message("Caluclated result : ".$total_score);
+-		$submission->data[$result_cid][0] = $total_score;
+-	}
++  if ($total_score !== FALSE) {
++    $score_enabled = _webform_score_enabled($node->nid);
++    $submission->data[$score_enabled->cid][0] = $total_score;
++  }
+ }
+-
+-
+-function webform_scoring_scores($node){
+-	$output = "Hi, This is a Score page. ";
+-
+-	return $output;
+-}
+-
+-function search($array, $key, $value)
+-{
+-    $results = array();
+-
+-    if (is_array($array)) {
+-        if (isset($array[$key]) && $array[$key] == $value) {
+-            $results[] = $array;
+-        }
+-
+-        foreach ($array as $subarray) {
+-            $results = array_merge($results, search($subarray, $key, $value));
+-        }
+-    }
+-
+-    return $results;
+-}
+\ No newline at end of file
+diff --git a/webform_scoring_enable.tpl.php b/webform_scoring_enable.tpl.php
+deleted file mode 100644
+index 88ce75d..0000000
+--- a/webform_scoring_enable.tpl.php
++++ /dev/null
+@@ -1,11 +0,0 @@
+-<form method="post" >
+-	<input type="hidden" name="nid" value="<?php echo $node->webform['nid']; ?>" />
+-	<input type="hidden" name="form_token" value="<?php echo md5('enable_scoring'); ?>" />
+-
+-	<div>
+-		<!--<input type="checkbox" name="check_enable" id="check_enable"/>
+-		 <label for="check_enable">Enable Scoring.</label></div> -->
+-	<div>
+-		<input type="submit" value="Enable Scoring" />
+-	</div>
+-</form>
+\ No newline at end of file
+diff --git a/webform_scoring_scoring_rules.tpl.php b/webform_scoring_scoring_rules.tpl.php
+deleted file mode 100644
+index 5e962e2..0000000
+--- a/webform_scoring_scoring_rules.tpl.php
++++ /dev/null
+@@ -1,35 +0,0 @@
+-<?php
+-	#dsm($node);
+-?>
+-<h1>Scoring Rules</h1>
+-<?php if (count($scoring_count) == 0) { ?>
+-	<p>Hi, This is a Scoring Rules page. \n There are no rules created. Please create one.</p>
+-<?php }?>
+-
+-<?php if(count($components)>0){ ?>
+-	<form method="post" >
+-		<input type="hidden" name="nid" value="<?php echo $node->webform['nid']; ?>" />
+-		<input type="hidden" name="form_token" value="<?php echo md5('insert_new_rule'); ?>" />
+-		<div>
+-			<select name="cid">
+-				<?php foreach($components as $component){
+-					print "<option value=\"{$component['cid']}\">".$component['name']."</option>";
+-				} ?>
+-			</select>
+-		</div>
+-		<div>
+-			<textarea name='vs_pair' style="border:1px solid #000;">value_a|10</textarea>
+-		</div>
+-		<div>
+-			<input type="submit" value="Add Scoring Rule" />
+-		</div>
+-	</form>
+-<?php } ?>
+-
+-<form method="post" >
+-	<input type="hidden" name="nid" value="<?php echo $node->webform['nid']; ?>" />
+-	<input type="hidden" name="form_token" value="<?php echo md5('disable_scoring'); ?>" />
+-	<div>
+-		<input type="submit" value="Disable Scoring" />
+-	</div>
+-</form>
+\ No newline at end of file
