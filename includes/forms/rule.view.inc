@@ -26,6 +26,18 @@ function webform_scoring_manage_rules($form, &$form_state, $node) {
   } else {
     $score_enabled = FALSE;
   }
+  
+  // todo: accept multiple score counters
+  // in that way you can give purpose to an answer in more dimensions.
+  // like
+  // - for business this answer has less value
+  // - for sales the answer means a lot
+  // - for operations ...
+  // - etc. 
+  // 
+  // Technicaly:
+  // 1. Extend the webform specific settings: to allow multiple cid's/names
+  // 2. Extend the rule specific settings: have one input field for each counter.
 
   $components = _webform_score_allowed_components($node);
 

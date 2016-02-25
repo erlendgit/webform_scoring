@@ -1,6 +1,13 @@
 <?php
 
 /**
+ * Todo: 
+ * - integration with modules
+ *   * (node-) clone
+ *   * Webform template
+ */
+
+/**
  * Implement hook_menu
  * @return array
  */
@@ -65,15 +72,20 @@ function webform_scoring_calculate_score($node, $data) {
       $score_key[$item['cid']]['pairs'] = $pairs;
     }
     $total_score = 0;
-    foreach ($data as $key => $value) {
-      if (!is_array($value)) {
-        $value = array($value);
+    foreach ($data as $key => $values) {
+      if (!is_array($values)) {
+        $values = array($values);
       }
       if (in_array($key, $cid_list)) {
         foreach ($score_key[$key]['pairs'] as $vs_pair) {
-          if ($value[0] == $vs_pair['value']) {
+          // done: cummulative
+          if (in_array($vs_pair['value'], $values)){
             $total_score += $vs_pair['score'];
           }
+          // todo: average
+          // todo: minimum
+          // todo: maximum
+          // todo: has/has-not value
         }
       }
     }

@@ -46,25 +46,6 @@ function _webform_score_used_components($node) {
 }
 
 /**
- * Get the settings for the current webform
- * @param type $nid
- * @return type
- */
-function _webform_score_enabled($nid) {
-  $enabled = &drupal_static(__FUNCTION__ . '_' . $nid);
-
-  if (empty($enabled['loaded'])) {
-    $enabled['loaded'] = TRUE;
-    $query = db_select('webform_scoring_enabled_webforms', 'a');
-    $query->fields('a');
-    $query->condition('a.nid', $nid);
-    $enabled['result'] = $query->execute()->fetch();
-  }
-
-  return $enabled['result'];
-}
-
-/**
  * Load a single rule
  * @param type $rid
  * @return type
@@ -130,3 +111,23 @@ function _webform_score_has_cid($node, $cid) {
 
   return $node->webform['components'][$cid]['name'];
 }
+
+/**
+ * Get the settings for the current webform
+ * @param type $nid
+ * @return type
+ */
+function _webform_score_enabled($nid) {
+  $enabled = &drupal_static(__FUNCTION__ . '_' . $nid);
+
+  if (empty($enabled['loaded'])) {
+    $enabled['loaded'] = TRUE;
+    $query = db_select('webform_scoring_enabled_webforms', 'a');
+    $query->fields('a');
+    $query->condition('a.nid', $nid);
+    $enabled['result'] = $query->execute()->fetch();
+  }
+
+  return $enabled['result'];
+}
+
