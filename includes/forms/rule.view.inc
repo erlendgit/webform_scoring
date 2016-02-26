@@ -52,11 +52,6 @@ function webform_scoring_manage_rules($form, &$form_state, $node) {
         '#title' => 'Component',
         '#options' => _webform_score_allowed_components($node),
       ),
-      'value_score_pair' => array(
-        '#type' => 'textarea',
-        '#title' => t('Data'),
-        '#default_value' => 'answer_a|10',
-      ),
       'submit' => array(
         '#type' => 'submit',
         '#value' => t('Add'),
@@ -189,9 +184,18 @@ function webform_scoring_manage_rules_submit_add($form, &$form_state) {
     ->fields(array(
       'nid' => $node->nid,
       'cid' => $form_state['values']['cid'],
-      'value_score_pair' => $form_state['values']['value_score_pair'],
     ))
     ->execute();
+
+  if ($result) {
+    $base = 'node/' . $node->nid . '/webform/scoring-rules';
+    $form_state['redirect'] = array(
+      $base . '/edit/' . $result,
+      array('query' => array(
+        'destination' => $base
+      ))
+    );
+  }
 }
 
 /**

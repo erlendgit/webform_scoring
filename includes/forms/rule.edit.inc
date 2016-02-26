@@ -46,7 +46,7 @@ function webform_scoring_edit_rule($form, &$form_state, $node, $rid) {
     $form['value_score_pair'] = array(
       '#type' => 'textarea',
       '#default_value' => $rule->value_score_pair,
-      '#required' => TRUE,
+      //'#required' => TRUE,
       '#title' => t('Data'),
     );
   }
